@@ -1,0 +1,99 @@
+name: Release new Docker image
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  BASE_IMAGE_NAME: plone/aurora
+  IS_LATEST: true
+  # add for example "-buildtest" to not overwrite baseline images
+  SUFFIX: ""
+
+jobs:
+  meta:
+    runs-on: ubuntu-24.04
+    outputs:
+      BASE_IMAGE_NAME: ${{ steps.vars.outputs.BASE_IMAGE_NAME }}
+      IS_LATEST: ${{ steps.vars.outputs.IS_LATEST }}
+      AURORA_VERSION: ${{ steps.vars.outputs.AURORA_VERSION }}
+      SUFFIX: ${{ env.SUFFIX }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set BASE_IMAGE_NAME, IS_LATEST, AURORA_VERSION
+        id: vars
+        run: |
+          echo "BASE_IMAGE_NAME=$BASE_IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "IS_LATEST=$IS_LATEST" >> $GITHUB_OUTPUT
+          echo "AURORA_VERSION=$(cat version.txt)" >> $GITHUB_OUTPUT
+          echo "SUFFIX=$SUFFIX" >> $GITHUB_OUTPUT
+
+  aurora-builder-image:
+    needs:
+      - meta
+    uses: ./.github/workflows/image-release.yml
+    with:
+      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
+      image-name: ${{ needs.meta.outputs.BASE_IMAGE_NAME }}-builder
+      context: ./pnpm
+      dockerfile: pnpm/Dockerfile.builder
+      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
+      suffix: ${{ needs.meta.outputs.SUFFIX }}
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  aurora-prod-conf-image:
+    uses: ./.github/workflows/image-release.yml
+    with:
+      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
+      image-name: ${{ needs.meta.outputs.BASE_IMAGE_NAME }}-prod-config
+      context: ./pnpm
+      dockerfile: pnpm/Dockerfile.prod
+      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
+      suffix: ${{ needs.meta.outputs.SUFFIX}}
+
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+    needs:
+      - meta
+
+  aurora-dev-image:
+    uses: ./.github/workflows/image-release.yml
+    with:
+      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
+      image-name: ${{ needs.meta.outputs.BASE_IMAGE_NAME }}-dev
+      context: ./pnpm
+      dockerfile: pnpm/Dockerfile.dev
+      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
+      suffix: ${{ needs.meta.outputs.SUFFIX }}
+
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+    needs:
+      - meta
+      - aurora-builder-image
+
+  plone-aurora:
+    uses: ./.github/workflows/image-release.yml
+    with:
+      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
+      image-name: plone/aurora
+      context: ./pnpm
+      dockerfile: pnpm/Dockerfile
+      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
+      suffix: ${{ needs.meta.outputs.SUFFIX }}
+
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+    needs:
+      - meta
+      - aurora-builder-image
+      - aurora-prod-conf-image

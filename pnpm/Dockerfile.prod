@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim
+
+LABEL maintainer="Plone Community <dev@plone.org>" \
+      org.label-schema.name="aurora-prod-config" \
+      org.label-schema.description="Slim image for Plone Aurora deployments" \
+      org.label-schema.vendor="Plone Foundation"
+
+RUN <<EOT
+    set -e
+    apt update
+    apt install -y --no-install-recommends busybox git
+    busybox --install -s
+    rm -rf /var/lib/apt/lists/*
+    mkdir /app
+    chown -R node:node /app
+EOT
+
+RUN npm i -g corepack@latest && corepack enable
+
+USER node
+WORKDIR /app
+
+EXPOSE 3000
+
+# Aurora's root loader can make `/ok` depend on backend availability. Use the
+# listening socket as the frontend liveness signal instead.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s CMD [ -n "$PORT" ] || PORT=3000 ; nc -w 1 127.0.0.1 "$PORT" </dev/null || exit 1
+
+ENTRYPOINT ["pnpm"]
+CMD ["start:prod"]

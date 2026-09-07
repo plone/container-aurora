@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+ARG AURORA_VERSION=latest
+ARG SUFFIX
+FROM plone/aurora-builder:${AURORA_VERSION}${SUFFIX}
+
+LABEL maintainer="Plone Community <dev@plone.org>" \
+      org.label-schema.name="aurora-dev" \
+      org.label-schema.description="Plone Aurora development image" \
+      org.label-schema.vendor="Plone Foundation"
+
+WORKDIR /app
+
+EXPOSE 3000 6006
+
+ENTRYPOINT ["pnpm"]
+CMD ["start"]

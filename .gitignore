@@ -1,0 +1,6 @@
+.vscode
+.*project
+.settings/
+
+# pyenv
+.python-version

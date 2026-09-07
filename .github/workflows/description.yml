@@ -1,0 +1,25 @@
+name: Update Docker Hub Description
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - "README.md"
+      - .github/workflows/description.yml
+
+jobs:
+  update-description:
+    runs-on: ubuntu-24.04
+    environment: DOCKER_HUB
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Update repo description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          repository: plone/aurora
+          readme-filepath: README.md
