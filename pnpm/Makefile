@@ -22,6 +22,13 @@ AURORA_VERSION=$$(cat ../version.txt)
 IMAGE_TAG=${AURORA_VERSION}
 IMAGE_SUFFIX=
 
+# Full base-image references handed to Dockerfile.dev and Dockerfile. CI
+# overrides these with `<image>@sha256:<manifest digest>` so a derived image is
+# always built on the base produced in the same run; locally they resolve to the
+# tags `make image-builder` / `make image-prod-config` just wrote.
+BUILDER_REF=$(BASE_IMAGE_NAME)-builder:$(IMAGE_TAG)$(IMAGE_SUFFIX)
+PROD_CONFIG_REF=$(BASE_IMAGE_NAME)-prod-config:$(IMAGE_TAG)$(IMAGE_SUFFIX)
+
 .PHONY: all
 all: help
 
@@ -45,14 +52,14 @@ image-builder:  ## Build Base Image
 .PHONY: image-dev
 image-dev:  ## Build Dev Image
 	@echo "Building $(BASE_IMAGE_NAME)-dev:$(IMAGE_TAG)$(IMAGE_SUFFIX)"
-	@docker buildx build . --build-arg AURORA_VERSION=${AURORA_VERSION} -t $(BASE_IMAGE_NAME)-dev:$(IMAGE_TAG)$(IMAGE_SUFFIX) -f Dockerfile.dev --load
+	@docker buildx build . --build-arg BUILDER_REF=$(BUILDER_REF) -t $(BASE_IMAGE_NAME)-dev:$(IMAGE_TAG)$(IMAGE_SUFFIX) -f Dockerfile.dev --load
 
 .PHONY: image-prod-config
 image-prod-config:  ## Build Prod Image
 	@echo "Building $(BASE_IMAGE_NAME)-prod-config:$(IMAGE_TAG)$(IMAGE_SUFFIX)"
-	@docker buildx build . --build-arg AURORA_VERSION=${AURORA_VERSION} -t $(BASE_IMAGE_NAME)-prod-config:$(IMAGE_TAG)$(IMAGE_SUFFIX) -f Dockerfile.prod --load
+	@docker buildx build . -t $(BASE_IMAGE_NAME)-prod-config:$(IMAGE_TAG)$(IMAGE_SUFFIX) -f Dockerfile.prod --load
 
 .PHONY: image-main
 image-main:  ## Build main image
 	@echo "Building $(MAIN_IMAGE_NAME):$(IMAGE_TAG)$(IMAGE_SUFFIX)"
-	@docker buildx build . --build-arg AURORA_VERSION=${AURORA_VERSION} -t $(MAIN_IMAGE_NAME):$(IMAGE_TAG)$(IMAGE_SUFFIX) -f Dockerfile --load
+	@docker buildx build . --build-arg BUILDER_REF=$(BUILDER_REF) --build-arg PROD_CONFIG_REF=$(PROD_CONFIG_REF) -t $(MAIN_IMAGE_NAME):$(IMAGE_TAG)$(IMAGE_SUFFIX) -f Dockerfile --load

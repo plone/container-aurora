@@ -8,8 +8,8 @@ LABEL maintainer="Plone Community <dev@plone.org>" \
 
 RUN <<EOT
     set -e
-    apt update
-    apt install -y --no-install-recommends busybox git
+    apt-get update
+    apt-get install -y --no-install-recommends busybox git
     busybox --install -s
     rm -rf /var/lib/apt/lists/*
     mkdir /app

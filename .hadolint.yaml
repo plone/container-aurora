@@ -1,0 +1,25 @@
+# hadolint configuration for `make lint`.
+#
+# Every rule below is silenced deliberately. Anything not listed here is a real
+# finding and should be fixed in the Dockerfile rather than added to this list.
+ignored:
+  # Pin versions in apt-get install. These images track Debian bookworm through
+  # the node:24-bookworm-slim base, whose package set moves with the base image;
+  # pinning apt versions here would break the build on the next base bump
+  # without making anything more reproducible.
+  - DL3008
+
+  # Use WORKDIR to switch to a directory. Dockerfile.builder's `cd /` sits
+  # inside a heredoc RUN that generates the project with Cookieplone and then
+  # moves it to /app -- the working directory only matters for the duration of
+  # that block, which is precisely what WORKDIR is wrong for.
+  - DL3003
+
+  # Non-numeric user-id. `USER node` is the user the official node image ships
+  # and the one the pnpm store cache mount is owned by; naming it is correct.
+  - DL3066
+
+  # Use JSON notation for CMD and ENTRYPOINT. Dockerfile.prod's HEALTHCHECK
+  # needs a shell to default $PORT and to chain `nc` with `||`, so exec form is
+  # not available to it.
+  - DL3025
