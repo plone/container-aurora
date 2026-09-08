@@ -8,8 +8,8 @@
 
 [![Docker Image Version](https://img.shields.io/docker/v/plone/aurora?sort=semver)](https://hub.docker.com/r/plone/aurora)
 [![Docker Image Size](https://img.shields.io/docker/image-size/plone/aurora?sort=semver)](https://hub.docker.com/r/plone/aurora)
-[![GitHub stars](https://img.shields.io/github/stars/plone/plone-aurora?style=flat-square)](https://github.com/plone/plone-aurora)
-[![License](https://img.shields.io/github/license/plone/plone-aurora)](./LICENSE.txt)
+[![GitHub stars](https://img.shields.io/github/stars/plone/container-aurora?style=flat-square)](https://github.com/plone/plone-aurora)
+[![License](https://img.shields.io/github/license/plone/container-aurora)](./LICENSE.txt)
 
 </div>
 
