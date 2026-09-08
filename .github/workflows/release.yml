@@ -1,99 +1,486 @@
 name: Release new Docker image
 
+# Single pipeline for every image this repository publishes.
+#
+# Trigger matrix:
+#   * pull request        -> lint only; the registry is never touched
+#   * push to main        -> build all four images, publish under the sha tag alone
+#   * push of a `v*` tag  -> same, plus the pep440 tags derived from version.txt
+#                            and `latest`
+#
+# The four images form a chain: `aurora-dev` is built FROM `aurora-builder`,
+# and `plone/aurora` FROM both `aurora-builder` and `aurora-prod-config`. So the
+# base pair is built and merged first, and the derived pair is then built
+# against the exact manifest digests produced in THIS run
+# (`plone/aurora-builder@sha256:...`), never a floating tag. That is what makes
+# a main push work at all: it publishes no version tag, so a
+# `FROM plone/aurora-builder:1.0.0-alpha.7` would either fail outright or
+# silently pick up a stale base left behind by an earlier release.
+
 on:
   push:
+    branches: [main]
     tags:
       - "v*"
+  pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
-  BASE_IMAGE_NAME: plone/aurora
-  IS_LATEST: true
   # add for example "-buildtest" to not overwrite baseline images
   SUFFIX: ""
+  IS_LATEST: true
 
 jobs:
   meta:
     runs-on: ubuntu-24.04
     outputs:
-      BASE_IMAGE_NAME: ${{ steps.vars.outputs.BASE_IMAGE_NAME }}
-      IS_LATEST: ${{ steps.vars.outputs.IS_LATEST }}
-      AURORA_VERSION: ${{ steps.vars.outputs.AURORA_VERSION }}
-      SUFFIX: ${{ env.SUFFIX }}
+      aurora-version: ${{ steps.vars.outputs.aurora-version }}
+      tag-rules: ${{ steps.vars.outputs.tag-rules }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      - name: Set BASE_IMAGE_NAME, IS_LATEST, AURORA_VERSION
+      - name: Resolve version and tag rules
         id: vars
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
-          echo "BASE_IMAGE_NAME=$BASE_IMAGE_NAME" >> $GITHUB_OUTPUT
-          echo "IS_LATEST=$IS_LATEST" >> $GITHUB_OUTPUT
-          echo "AURORA_VERSION=$(cat version.txt)" >> $GITHUB_OUTPUT
-          echo "SUFFIX=$SUFFIX" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          version=$(cat version.txt)
+          test -n "${version}"
 
-  aurora-builder-image:
+          # The tag rules are composed once here and consumed by every
+          # metadata-action step below. GitHub Actions does not support YAML
+          # anchors, and this block would otherwise be duplicated five times
+          # across the build and merge jobs, free to drift.
+          #
+          # `type=sha` is unconditional: it is the only tag a main push
+          # publishes, and it is what the derived images are pinned against.
+          # Everything else is gated on the ref being a tag.
+          {
+            echo "aurora-version=${version}"
+            echo 'tag-rules<<__RULES__'
+            echo 'type=sha'
+            echo "type=pep440,pattern={{version}},value=${version},enable=${IS_TAG}"
+            echo "type=pep440,pattern={{major}}.{{minor}}.{{patch}},value=${version},enable=${IS_TAG}"
+            echo "type=pep440,pattern={{major}}.{{minor}},value=${version},enable=${IS_TAG}"
+            echo "type=pep440,pattern={{major}},value=${version},enable=${IS_TAG}"
+            # The literal version as written in version.txt. pep440 normalizes
+            # `1.0.0-alpha.7` to `1.0.0a7`, so without this the un-normalized
+            # string would not be published at all.
+            echo "type=raw,value=${version},enable=${IS_TAG}"
+            if [ "${IS_TAG}" = "true" ] && [ "${IS_LATEST}" = "true" ]; then
+              echo 'type=raw,value=latest'
+            fi
+            echo '__RULES__'
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "version=${version} is-tag=${IS_TAG} is-latest=${IS_LATEST}"
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: make lint
+        run: make lint
+
+  # aurora-builder and aurora-prod-config: both build FROM node:24 and depend on
+  # nothing else in this repository, so they go first and in parallel.
+  build-base:
     needs:
       - meta
-    uses: ./.github/workflows/image-release.yml
-    with:
-      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
-      image-name: ${{ needs.meta.outputs.BASE_IMAGE_NAME }}-builder
-      context: ./pnpm
-      dockerfile: pnpm/Dockerfile.builder
-      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
-      suffix: ${{ needs.meta.outputs.SUFFIX }}
-    secrets:
-      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - lint
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: builder
+            repo: plone/aurora-builder
+            dockerfile: pnpm/Dockerfile.builder
+          - name: prod-config
+            repo: plone/aurora-prod-config
+            dockerfile: pnpm/Dockerfile.prod
+        platform:
+          - runner: ubuntu-24.04
+            arch: linux/amd64
+          - runner: ubuntu-24.04-arm
+            arch: linux/arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
 
-  aurora-prod-conf-image:
-    uses: ./.github/workflows/image-release.yml
-    with:
-      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
-      image-name: ${{ needs.meta.outputs.BASE_IMAGE_NAME }}-prod-config
-      context: ./pnpm
-      dockerfile: pnpm/Dockerfile.prod
-      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
-      suffix: ${{ needs.meta.outputs.SUFFIX}}
+      - name: Prepare artifact key
+        run: |
+          set -euo pipefail
+          platform=${{ matrix.platform.arch }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "${GITHUB_ENV}"
 
-    secrets:
-      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Composed per image rather than passed uniformly: only Dockerfile.builder
+      # declares AURORA_VERSION (it feeds Cookieplone's `aurora_version`), and
+      # Dockerfile.prod declares no ARG at all. Passing an argument no
+      # Dockerfile consumes buys nothing but an "unused build arg" warning.
+      - name: Compose build args
+        env:
+          AURORA_VERSION: ${{ needs.meta.outputs.aurora-version }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'BUILD_ARGS<<__ARGS__'
+            if [ "${{ matrix.image.name }}" = "builder" ]; then
+              test -n "${AURORA_VERSION}"
+              echo "AURORA_VERSION=${AURORA_VERSION}"
+            fi
+            echo '__ARGS__'
+          } >> "${GITHUB_ENV}"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ matrix.image.repo }}
+          flavor: |
+            latest=false
+            suffix=${{ env.SUFFIX }}
+          tags: ${{ needs.meta.outputs.tag-rules }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Pushed by digest only. The tags are applied once, to the manifest list,
+      # by the merge job below; a per-platform build that pushed tags would have
+      # the two architectures overwrite each other.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          platforms: ${{ matrix.platform.arch }}
+          context: ./pnpm
+          file: ${{ matrix.image.dockerfile }}
+          build-args: ${{ env.BUILD_ARGS }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ matrix.image.repo }}
+
+      - name: Export digest
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          test -n "${digest}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          ls -la "${{ runner.temp }}/digests"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  # Deliberately NOT a matrix, unlike merge-derived below: this job has to hand
+  # both manifest-list digests to build-derived as job outputs, and outputs set
+  # from separate matrix legs collide on the same key.
+  merge-base:
     needs:
       - meta
+      - build-base
+    runs-on: ubuntu-24.04
+    outputs:
+      builder-ref: ${{ steps.builder.outputs.ref }}
+      prod-config-ref: ${{ steps.prod-config.outputs.ref }}
+    steps:
+      - name: Download aurora-builder digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests/builder
+          pattern: digests-builder-*
+          merge-multiple: true
 
-  aurora-dev-image:
-    uses: ./.github/workflows/image-release.yml
-    with:
-      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
-      image-name: ${{ needs.meta.outputs.BASE_IMAGE_NAME }}-dev
-      context: ./pnpm
-      dockerfile: pnpm/Dockerfile.dev
-      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
-      suffix: ${{ needs.meta.outputs.SUFFIX }}
+      - name: Download aurora-prod-config digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests/prod-config
+          pattern: digests-prod-config-*
+          merge-multiple: true
 
-    secrets:
-      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta (aurora-builder)
+        id: meta-builder
+        uses: docker/metadata-action@v6
+        with:
+          images: plone/aurora-builder
+          flavor: |
+            latest=false
+            suffix=${{ env.SUFFIX }}
+          tags: ${{ needs.meta.outputs.tag-rules }}
+
+      - name: Docker meta (aurora-prod-config)
+        id: meta-prod-config
+        uses: docker/metadata-action@v6
+        with:
+          images: plone/aurora-prod-config
+          flavor: |
+            latest=false
+            suffix=${{ env.SUFFIX }}
+          tags: ${{ needs.meta.outputs.tag-rules }}
+
+      # The captured digest is the whole point of this job: it is the manifest
+      # LIST digest, so a single reference resolves correctly on both amd64 and
+      # arm64 when the derived images build FROM it.
+      - name: Merge aurora-builder manifest list
+        id: builder
+        working-directory: ${{ runner.temp }}/digests/builder
+        env:
+          IMAGE: plone/aurora-builder
+          META_JSON: ${{ steps.meta-builder.outputs.json }}
+        run: |
+          set -euo pipefail
+          ls -la
+          # shellcheck disable=SC2046  # word splitting is exactly what is wanted
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${META_JSON}") \
+            $(printf "${IMAGE}@sha256:%s " *)
+          tag=$(jq -r '.tags[0]' <<< "${META_JSON}")
+          test -n "${tag}"
+          digest=$(docker buildx imagetools inspect "${tag}" --format '{{.Manifest.Digest}}')
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "unexpected digest for ${tag}: '${digest}'" >&2; exit 1 ;;
+          esac
+          echo "ref=${IMAGE}@${digest}" >> "${GITHUB_OUTPUT}"
+          echo "aurora-builder -> ${IMAGE}@${digest}"
+
+      - name: Merge aurora-prod-config manifest list
+        id: prod-config
+        working-directory: ${{ runner.temp }}/digests/prod-config
+        env:
+          IMAGE: plone/aurora-prod-config
+          META_JSON: ${{ steps.meta-prod-config.outputs.json }}
+        run: |
+          set -euo pipefail
+          ls -la
+          # shellcheck disable=SC2046  # word splitting is exactly what is wanted
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${META_JSON}") \
+            $(printf "${IMAGE}@sha256:%s " *)
+          tag=$(jq -r '.tags[0]' <<< "${META_JSON}")
+          test -n "${tag}"
+          digest=$(docker buildx imagetools inspect "${tag}" --format '{{.Manifest.Digest}}')
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "unexpected digest for ${tag}: '${digest}'" >&2; exit 1 ;;
+          esac
+          echo "ref=${IMAGE}@${digest}" >> "${GITHUB_OUTPUT}"
+          echo "aurora-prod-config -> ${IMAGE}@${digest}"
+
+  # aurora-dev and plone/aurora, both pinned to the base digests merged above.
+  build-derived:
     needs:
       - meta
-      - aurora-builder-image
+      - merge-base
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: dev
+            repo: plone/aurora-dev
+            dockerfile: pnpm/Dockerfile.dev
+          - name: main
+            repo: plone/aurora
+            dockerfile: pnpm/Dockerfile
+        platform:
+          - runner: ubuntu-24.04
+            arch: linux/amd64
+          - runner: ubuntu-24.04-arm
+            arch: linux/arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
 
-  plone-aurora:
-    uses: ./.github/workflows/image-release.yml
-    with:
-      aurora-version: ${{ needs.meta.outputs.AURORA_VERSION }}
-      image-name: plone/aurora
-      context: ./pnpm
-      dockerfile: pnpm/Dockerfile
-      is-latest: ${{ needs.meta.outputs.IS_LATEST == 'true'  }}
-      suffix: ${{ needs.meta.outputs.SUFFIX }}
+      - name: Prepare artifact key
+        run: |
+          set -euo pipefail
+          platform=${{ matrix.platform.arch }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "${GITHUB_ENV}"
 
-    secrets:
-      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Only plone/aurora reads PROD_CONFIG_REF; Dockerfile.dev is a single
+      # stage on top of the builder.
+      - name: Compose build args
+        env:
+          BUILDER_REF: ${{ needs.merge-base.outputs.builder-ref }}
+          PROD_CONFIG_REF: ${{ needs.merge-base.outputs.prod-config-ref }}
+        run: |
+          set -euo pipefail
+          test -n "${BUILDER_REF}"
+          {
+            echo 'BUILD_ARGS<<__ARGS__'
+            echo "BUILDER_REF=${BUILDER_REF}"
+            if [ "${{ matrix.image.name }}" = "main" ]; then
+              test -n "${PROD_CONFIG_REF}"
+              echo "PROD_CONFIG_REF=${PROD_CONFIG_REF}"
+            fi
+            echo '__ARGS__'
+          } >> "${GITHUB_ENV}"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ matrix.image.repo }}
+          flavor: |
+            latest=false
+            suffix=${{ env.SUFFIX }}
+          tags: ${{ needs.meta.outputs.tag-rules }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          platforms: ${{ matrix.platform.arch }}
+          context: ./pnpm
+          file: ${{ matrix.image.dockerfile }}
+          build-args: ${{ env.BUILD_ARGS }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ matrix.image.repo }}
+
+      - name: Export digest
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          test -n "${digest}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          ls -la "${{ runner.temp }}/digests"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  merge-derived:
     needs:
       - meta
-      - aurora-builder-image
-      - aurora-prod-conf-image
+      - build-derived
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: dev
+            repo: plone/aurora-dev
+          - name: main
+            repo: plone/aurora
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.image.name }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ matrix.image.repo }}
+          flavor: |
+            latest=false
+            suffix=${{ env.SUFFIX }}
+          tags: ${{ needs.meta.outputs.tag-rules }}
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ matrix.image.repo }}
+          META_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          set -euo pipefail
+          ls -la
+          # shellcheck disable=SC2046  # word splitting is exactly what is wanted
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${META_JSON}") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Inspect image
+        run: docker buildx imagetools inspect ${{ matrix.image.repo }}:${{ steps.meta.outputs.version }}
+
+  # Syncs the Docker Hub description from the root README, so the Hub page
+  # cannot drift from what this repository actually publishes. Main only: the
+  # README on main is the source of truth, and a tag re-publishing it would say
+  # nothing new.
+  #
+  # Unlike plone.docker's equivalent job, there is no HAS_DOCKERHUB presence
+  # guard: this repository already publishes to the Hub, so absent credentials
+  # are a misconfiguration to surface, not a state to skip past quietly.
+  description:
+    needs:
+      - merge-derived
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Update repo description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: plone/aurora
+          short-description: ${{ github.event.repository.description }}
+          # The README links to paths in this repository relative to its root
+          # (./LICENSE.txt, ./version.txt). On Docker Hub those would resolve
+          # against hub.docker.com and 404, so let the action rewrite them to
+          # absolute GitHub URLs.
+          enable-url-completion: true
+          readme-filepath: ./README.md

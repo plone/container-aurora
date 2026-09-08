@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
-ARG AURORA_VERSION=latest
-ARG SUFFIX
-FROM plone/aurora-builder:${AURORA_VERSION}${SUFFIX}
+# The base is passed in as a complete reference rather than assembled from a
+# version tag, so CI can pin it to the manifest digest built in the same run.
+# The default keeps a bare `docker build` working.
+ARG BUILDER_REF=plone/aurora-builder:latest
+FROM ${BUILDER_REF}
 
 LABEL maintainer="Plone Community <dev@plone.org>" \
       org.label-schema.name="aurora-dev" \

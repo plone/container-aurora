@@ -22,15 +22,13 @@ AURORA_VERSION=$$(cat version.txt)
 IMAGE_TAG=${AURORA_VERSION}
 
 # Code Quality
+# All tooling runs via docker: no local installs required. This repository
+# carries no Python, so what there is to lint is Dockerfiles and workflow YAML,
+# following plone.docker's legacy/Makefile.
+DOCKER ?= docker
 CURRENT_FOLDER=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-CODE_QUALITY_VERSION=2.1.0
-ifndef LOG_LEVEL
-	LOG_LEVEL=INFO
-endif
-CURRENT_USER=$$(whoami)
-USER_INFO=$$(id -u ${CURRENT_USER}):$$(getent group ${CURRENT_USER}|cut -d: -f3)
-LINT=docker run --rm -e LOG_LEVEL="${LOG_LEVEL}" -v "${CURRENT_FOLDER}":/github/workspace plone/code-quality:${CODE_QUALITY_VERSION} check
-FORMAT=docker run --rm --user="${USER_INFO}" -e LOG_LEVEL="${LOG_LEVEL}" -v "${CURRENT_FOLDER}":/github/workspace plone/code-quality:${CODE_QUALITY_VERSION} format
+DOCKERFILES=pnpm/Dockerfile pnpm/Dockerfile.builder pnpm/Dockerfile.dev pnpm/Dockerfile.prod
+YAML_FILES=.github/workflows/*.yml .github/dependabot.yml
 
 
 
@@ -43,15 +41,21 @@ all: help
 help: # This help message
 	@grep -E '^[a-zA-Z_-]+:.*?# .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?# "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-# Format
-.PHONY: format
-format: ## Format the codebase according to our standards
-	@echo "$(GREEN)==> Format Python helper$(RESET)"
-	$(FORMAT)
-
 .PHONY: lint
-lint: ## check code style
-	$(LINT)
+lint: ## Lint Dockerfiles (hadolint) and workflows (yaml well-formedness)
+	@echo "$(GREEN)==> hadolint$(RESET)"
+	set -e; for f in $(DOCKERFILES); do \
+		echo "hadolint $$f"; \
+		$(DOCKER) run --rm -v "$(CURRENT_FOLDER):/mnt:ro" -w /mnt \
+			hadolint/hadolint hadolint "$$f"; \
+	done
+	@echo "$(GREEN)==> yaml$(RESET)"
+	set -e; for f in $(YAML_FILES); do \
+		echo "yaml check $$f"; \
+		$(DOCKER) run --rm -v "$(CURRENT_FOLDER):/data:ro" \
+			mikefarah/yq:4 -e 'true' "/data/$$f" >/dev/null; \
+	done
+	@echo "$(GREEN)==> lint OK$(RESET)"
 
 # Build image
 .PHONY: show-image
