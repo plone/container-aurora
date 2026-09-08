@@ -2,8 +2,11 @@
 FROM node:24-bookworm-slim
 
 ARG AURORA_VERSION
-# Temporary default while cookieplone-templates#450 is open.
-ARG COOKIEPLONE_REPOSITORY_TAG=auroraversion
+# The aurora_addon template lives only on cookieplone-templates' `next` branch:
+# it was added by #450, which merged into `next` (not `main`) on 2026-09-05, and
+# main...next is heavily diverged. Pinned to a commit rather than to `next` so a
+# given commit here always scaffolds the same project -- bump it deliberately.
+ARG COOKIEPLONE_REPOSITORY_TAG=662183adfd8f2271ed2c6c65419171737723430a
 ARG COOKIEPLONE_VERSION=2.0.0b3
 
 ENV PNPM_HOME="/pnpm"
