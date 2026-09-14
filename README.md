@@ -8,7 +8,7 @@
 
 [![Docker Image Version](https://img.shields.io/docker/v/plone/aurora?sort=semver)](https://hub.docker.com/r/plone/aurora)
 [![Docker Image Size](https://img.shields.io/docker/image-size/plone/aurora?sort=semver)](https://hub.docker.com/r/plone/aurora)
-[![GitHub stars](https://img.shields.io/github/stars/plone/container-aurora?style=flat-square)](https://github.com/plone/plone-aurora)
+[![GitHub stars](https://img.shields.io/github/stars/plone/container-aurora?style=flat-square)](https://github.com/plone/container-aurora)
 [![License](https://img.shields.io/github/license/plone/container-aurora)](./LICENSE.txt)
 
 </div>
@@ -55,8 +55,8 @@ Use `make help` for the individual builder, development, runtime, and main-image
 
 ## Contributing
 
-- [Issue tracker](https://github.com/plone/plone-aurora/issues)
-- [Source code](https://github.com/plone/plone-aurora)
+- [Issue tracker](https://github.com/plone/container-aurora/issues)
+- [Source code](https://github.com/plone/container-aurora)
 
 Do not commit directly to release branches. Open a pull request and have another
 maintainer merge it.
