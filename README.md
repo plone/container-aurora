@@ -26,12 +26,12 @@ Until that PR merges, `Dockerfile.builder` defaults
 
 ## Images
 
-For Aurora `1.0.0-alpha.7`, the release workflow publishes:
+For Aurora `1.0.0-alpha.8`, the release workflow publishes:
 
-- `plone/aurora:1.0.0-alpha.7` — production application
-- `plone/aurora-builder:1.0.0-alpha.7` — generated project and build dependencies
-- `plone/aurora-dev:1.0.0-alpha.7` — development entrypoint
-- `plone/aurora-prod-config:1.0.0-alpha.7` — production runtime base
+- `plone/aurora:1.0.0-alpha.8` — production application
+- `plone/aurora-builder:1.0.0-alpha.8` — generated project and build dependencies
+- `plone/aurora-dev:1.0.0-alpha.8` — development entrypoint
+- `plone/aurora-prod-config:1.0.0-alpha.8` — production runtime base
 
 The workflow also creates compatible major, minor, and `latest` tags.
 
