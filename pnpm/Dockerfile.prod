@@ -21,6 +21,13 @@ RUN npm i -g corepack@latest && corepack enable
 USER node
 WORKDIR /app
 
+# pnpm >= 11 runs a dependency-status check before executing a script and, when
+# it decides the installed modules are stale, tries to recreate node_modules
+# with `pnpm install`. Without a TTY that removal aborts and the container exits
+# (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY). The production deps are already
+# installed at build time, so skip the pre-run verification entirely.
+ENV pnpm_config_verify_deps_before_run=false
+
 EXPOSE 3000
 
 # Aurora's root loader can make `/ok` depend on backend availability. Use the
