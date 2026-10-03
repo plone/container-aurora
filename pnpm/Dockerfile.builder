@@ -2,12 +2,13 @@
 FROM node:24-bookworm-slim
 
 ARG AURORA_VERSION
-# The aurora_addon template lives only on cookieplone-templates' `next` branch:
-# it was added by #450, which merged into `next` (not `main`) on 2026-09-05, and
-# main...next is heavily diverged. Pinned to a commit rather than to `next` so a
-# given commit here always scaffolds the same project -- bump it deliberately.
-ARG COOKIEPLONE_REPOSITORY_TAG=662183adfd8f2271ed2c6c65419171737723430a
-ARG COOKIEPLONE_VERSION=2.0.0b3
+# Pinned to a cookieplone-templates commit rather than to `main` so a given
+# commit here always scaffolds the same project -- bump it deliberately.
+# Aurora 1.0.0-alpha.16 needs 48d2e63 (build @plone/icons and @plone/quanta in
+# build-deps) and #475 (use @plone/icons for the SVG types), both newer than the
+# 20260914.1 release; switch back to a release tag once one includes them.
+ARG COOKIEPLONE_REPOSITORY_TAG=99c2201962371b182499a0d71f45ed878da0c33d
+ARG COOKIEPLONE_VERSION=2.0.0
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"

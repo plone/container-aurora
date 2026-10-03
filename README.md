@@ -19,10 +19,10 @@ happens in `plone/aurora`.
 
 The builder creates a clean frontend project with Cookieplone's `aurora_addon` template,
 pins its Aurora checkout to the version in [`version.txt`](./version.txt), installs the
-workspace, and builds the production application. Version pinning depends on
-[cookieplone-templates#450](https://github.com/plone/cookieplone-templates/pull/450).
-Until that PR merges, `Dockerfile.builder` defaults
-`COOKIEPLONE_REPOSITORY_TAG` to `auroraversion`; change it to `next` after merge.
+workspace, and builds the production application. `Dockerfile.builder` pins both the
+Cookieplone version (`COOKIEPLONE_VERSION`) and the
+[cookieplone-templates](https://github.com/plone/cookieplone-templates) ref
+(`COOKIEPLONE_REPOSITORY_TAG`, a release tag or commit); bump them deliberately.
 
 ## Images
 
