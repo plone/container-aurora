@@ -54,3 +54,16 @@ RUN --mount=type=cache,id=pnpm,target=/app/.pnpm-store,uid=1000 <<EOT
     pnpm install
     make build-deps
 EOT
+
+# Drop the scaffolded `plone-aurora` add-on: it only exists to bootstrap the
+# workspace. Left in place, it stays a `packages/*` workspace project, and a
+# project built on this image copies in its own add-on and `pnpm-lock.yaml`,
+# which has no entry for it, so the frozen-lockfile install fails. Unregister it
+# from the root `package.json` and `registry.config.ts`, then refresh the lockfile.
+RUN --mount=type=cache,id=pnpm,target=/app/.pnpm-store,uid=1000 <<EOT
+    set -e
+    rm -rf packages/plone-aurora
+    python3 -c "import json; data = json.load(open('package.json')); data['dependencies'].pop('plone-aurora'); json.dump(data, open('package.json', 'w'), indent=2)"
+    printf "import { addons } from '@plone/aurora/registry.config';\n\nexport { addons };\n" > registry.config.ts
+    pnpm install
+EOT
