@@ -6,7 +6,7 @@ ARG AURORA_VERSION
 # commit here always scaffolds the same project -- bump it deliberately.
 # It must include the `sub/aurora_project` template (plone/cookieplone-templates#490);
 # switch back to a release tag once one includes it.
-ARG COOKIEPLONE_REPOSITORY_TAG=3b16071800ff87400110294956460134c5a36910
+ARG COOKIEPLONE_REPOSITORY_TAG=53f065a1df4cb6e6b9757a9375298ac4abd41fec
 # 2.0.2 handles template names with `/` (plone/cookieplone#216); 2.0.0 exits
 # with an error after generating `sub/aurora_project`.
 ARG COOKIEPLONE_VERSION=2.0.2
