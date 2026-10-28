@@ -4,11 +4,12 @@ FROM node:24-bookworm-slim
 ARG AURORA_VERSION
 # Pinned to a cookieplone-templates commit rather than to `main` so a given
 # commit here always scaffolds the same project -- bump it deliberately.
-# Aurora 1.0.0-alpha.16 needs 48d2e63 (build @plone/icons and @plone/quanta in
-# build-deps) and #475 (use @plone/icons for the SVG types), both newer than the
-# 20260914.1 release; switch back to a release tag once one includes them.
-ARG COOKIEPLONE_REPOSITORY_TAG=99c2201962371b182499a0d71f45ed878da0c33d
-ARG COOKIEPLONE_VERSION=2.0.0
+# It must include the `sub/aurora_project` template (plone/cookieplone-templates#490);
+# switch back to a release tag once one includes it.
+ARG COOKIEPLONE_REPOSITORY_TAG=3b16071800ff87400110294956460134c5a36910
+# 2.0.2 handles template names with `/` (plone/cookieplone#216); 2.0.0 exits
+# with an error after generating `sub/aurora_project`.
+ARG COOKIEPLONE_VERSION=2.0.2
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -29,17 +30,11 @@ EOT
 RUN <<EOT
     set -e
     cd /
-    pipx run --no-cache --spec cookieplone==$COOKIEPLONE_VERSION cookieplone aurora_addon --no-input \
+    # A workspace with no add-on: projects built on this image copy in their own.
+    pipx run --no-cache --spec cookieplone==$COOKIEPLONE_VERSION cookieplone sub/aurora_project --no-input \
       title="Plone Aurora" \
-      frontend_addon_name=plone-aurora \
-      project_slug=plone-aurora \
-      description="Plone Aurora frontend" \
       author="Plone Community" \
-      email=dev@plone.org \
-      github_organization=plone \
-      npm_package_name=plone-aurora \
       aurora_version=$AURORA_VERSION
-    mv /plone-aurora /app
     chown -R node:node /app
 EOT
 
@@ -53,17 +48,4 @@ RUN --mount=type=cache,id=pnpm,target=/app/.pnpm-store,uid=1000 <<EOT
     pnpm dlx mrs-developer missdev --no-config --fetch-https
     pnpm install
     make build-deps
-EOT
-
-# Drop the scaffolded `plone-aurora` add-on: it only exists to bootstrap the
-# workspace. Left in place, it stays a `packages/*` workspace project, and a
-# project built on this image copies in its own add-on and `pnpm-lock.yaml`,
-# which has no entry for it, so the frozen-lockfile install fails. Unregister it
-# from the root `package.json` and `registry.config.ts`, then refresh the lockfile.
-RUN --mount=type=cache,id=pnpm,target=/app/.pnpm-store,uid=1000 <<EOT
-    set -e
-    rm -rf packages/plone-aurora
-    python3 -c "import json; data = json.load(open('package.json')); data['dependencies'].pop('plone-aurora'); json.dump(data, open('package.json', 'w'), indent=2)"
-    printf "import { addons } from '@plone/aurora/registry.config';\n\nexport { addons };\n" > registry.config.ts
-    pnpm install
 EOT
