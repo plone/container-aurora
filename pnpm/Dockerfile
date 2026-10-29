@@ -27,4 +27,10 @@ LABEL maintainer="Plone Community <dev@plone.org>" \
 COPY --from=builder /app/ /app/
 
 # Install the pnpm version declared by the Cookieplone-generated package.json.
-RUN corepack install
+# pnpm >= 12 ships as a native binary that corepack only downloads the first
+# time pnpm runs, so run it once here instead of on every container start.
+RUN <<EOT
+    set -e
+    corepack install
+    pnpm --version
+EOT

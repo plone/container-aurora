@@ -4,7 +4,7 @@
 # finding and should be fixed in the Dockerfile rather than added to this list.
 ignored:
   # Pin versions in apt-get install. These images track Debian bookworm through
-  # the node:24-bookworm-slim base, whose package set moves with the base image;
+  # the node:26-bookworm-slim base, whose package set moves with the base image;
   # pinning apt versions here would break the build on the next base bump
   # without making anything more reproducible.
   - DL3008

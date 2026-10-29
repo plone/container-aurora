@@ -94,7 +94,7 @@ jobs:
       - name: make lint
         run: make lint
 
-  # aurora-builder and aurora-prod-config: both build FROM node:24 and depend on
+  # aurora-builder and aurora-prod-config: both build FROM node:26 and depend on
   # nothing else in this repository, so they go first and in parallel.
   build-base:
     needs:
