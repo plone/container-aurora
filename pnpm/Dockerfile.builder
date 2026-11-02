@@ -27,6 +27,7 @@ RUN <<EOT
     apt-get update
     apt-get upgrade -y
     apt-get install -y --no-install-recommends python3 python3-pip build-essential git ca-certificates pipx
+    # The Debian base image automatically cleans downloaded apt packages.
     rm -rf /var/lib/apt/lists/*
 EOT
 
