@@ -25,6 +25,7 @@ LABEL maintainer="Plone Community <dev@plone.org>" \
 RUN <<EOT
     set -e
     apt-get update
+    apt-get upgrade -y
     apt-get install -y --no-install-recommends python3 python3-pip build-essential git ca-certificates pipx
     rm -rf /var/lib/apt/lists/*
 EOT
