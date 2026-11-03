@@ -9,8 +9,10 @@ LABEL maintainer="Plone Community <dev@plone.org>" \
 RUN <<EOT
     set -e
     apt-get update
+    apt-get upgrade -y
     apt-get install -y --no-install-recommends busybox git
     busybox --install -s
+    # The Debian base image automatically cleans downloaded apt packages.
     rm -rf /var/lib/apt/lists/*
     mkdir /app
     chown -R node:node /app
