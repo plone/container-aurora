@@ -175,6 +175,7 @@ jobs:
           context: ./pnpm
           file: ${{ matrix.image.dockerfile }}
           build-args: ${{ env.BUILD_ARGS }}
+          pull: true
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ matrix.image.repo }}
 
@@ -377,6 +378,7 @@ jobs:
           context: ./pnpm
           file: ${{ matrix.image.dockerfile }}
           build-args: ${{ env.BUILD_ARGS }}
+          pull: true
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true,name=${{ matrix.image.repo }}
 
