@@ -26,12 +26,12 @@ Cookieplone version (`COOKIEPLONE_VERSION`) and the
 
 ## Images
 
-For Aurora `1.0.0-alpha.19`, the release workflow publishes:
+For Aurora `1.0.0-alpha.24`, the release workflow publishes:
 
-- `plone/aurora:1.0.0-alpha.19` — production application
-- `plone/aurora-builder:1.0.0-alpha.19` — generated project and build dependencies
-- `plone/aurora-dev:1.0.0-alpha.19` — development entrypoint
-- `plone/aurora-prod-config:1.0.0-alpha.19` — production runtime base
+- `plone/aurora:1.0.0-alpha.24` — production application
+- `plone/aurora-builder:1.0.0-alpha.24` — generated project and build dependencies
+- `plone/aurora-dev:1.0.0-alpha.24` — development entrypoint
+- `plone/aurora-prod-config:1.0.0-alpha.24` — production runtime base
 
 The workflow also creates compatible major, minor, and `latest` tags.
 
